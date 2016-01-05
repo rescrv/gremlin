@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2015, Robert Escriva
 # All rights reserved.
@@ -88,6 +88,7 @@ class Playground(object):
         self.base = tempfile.mkdtemp(prefix='gremlin-')
         self.crash_is_nop = False
         self.daemons = []
+        self.timeout = None
         self.failed = False
         self.execed = 0
         self.exit = 0
@@ -136,20 +137,20 @@ class Playground(object):
         for proc in self.daemons:
             proc.wait()
         if dump_logs:
-            print 'the gremlins were kind enough to provide log files'
-            print 'playground: %s' % self.base
+            print('the gremlins were kind enough to provide log files')
+            print('playground: %s' % self.base)
             if self.daemons:
-                print
+                print()
             for idx, proc in enumerate(self.daemons):
-                print 'daemon[%d]: %s' % (idx, sanitized_shell(proc.cmd))
-                print 'exited %d' % proc.returncode
+                print('daemon[%d]: %s' % (idx, sanitized_shell(proc.cmd)))
+                print('exited %d' % proc.returncode)
                 output = open(self.daemon_logfile(idx), 'r').read()
                 output = output.strip()
                 if output:
-                    print 'stdout/stderr (merged):'
-                    print output
+                    print('stdout/stderr (merged):')
+                    print(output)
                 if idx + 1 < len(self.daemons):
-                    print
+                    print()
             self.exit = 1
         else:
             shutil.rmtree(self.base)
@@ -178,20 +179,36 @@ class Playground(object):
         else:
             raise GremlinError('invalid environment: %s' % sanitized_shell(cmd))
 
+    def cmd_timeout(self, cmd):
+        if len(cmd) == 0:
+            self.timeout = None
+        elif len(cmd) == 1:
+            try:
+                self.timeout = int(cmd[0])
+            except ValueError:
+                raise GremlinError('invalid timeout: %s' % sanitized_shell(cmd))
+        else:
+            raise GremlinError('invalid timeout: %s' % sanitized_shell(cmd))
+
     def cmd_run(self, cmd):
         try:
             cmd = tuple(map(os.path.expandvars, cmd))
             p = subprocess.Popen(cmd, cwd=self.base,
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT)
-            stdout, stderr = p.communicate()
+            try:
+                stdout, stderr = p.communicate(timeout=self.timeout)
+            except subprocess.TimeoutExpired:
+                print('timeout %ds exceeded: %s' % (self.timeout, sanitized_shell(cmd)))
+                p.kill()
+                stdout, stderr = p.communicate()
             if p.returncode != 0:
                 self.failed = True
-                print 'exited %d: %s' % (p.returncode, sanitized_shell(cmd))
-                stdout = stdout.strip()
+                print('exited %d: %s' % (p.returncode, sanitized_shell(cmd)))
+                stdout = stdout.decode('utf8', 'ignore').strip()
                 if stdout:
-                    print 'stdout/stderr (merged):'
-                    print stdout
+                    print('stdout/stderr (merged):')
+                    print(stdout)
         except OSError as e:
             if e.errno == errno.ENOENT:
                 raise GremlinError('ENOENT: %s' % sanitized_shell(cmd))
@@ -211,6 +228,7 @@ class Playground(object):
         while wait:
             wait = False
             stdout = subprocess.check_output(('netstat', '-an'))
+            stdout = stdout.decode('utf8', 'ignore')
             for x in re.findall('^tcp.*$', stdout, flags=re.MULTILINE):
                 x = re.sub('\s+', ' ', x).split(' ')
                 port = x[3].rsplit(':', 1)[-1]
@@ -222,7 +240,7 @@ class Playground(object):
                 states[port] = state
                 if port in ports and state != 'TIME_WAIT':
                     wait = True
-            if wait and all([x in ('LISTEN', 'ESTABLISHED') for x in states.values()]):
+            if wait and all([x in ('LISTEN', 'ESTABLISHED') for x in list(states.values())]):
                 raise GremlinError('ports in use by other processes')
             if wait:
                 time.sleep(0.1)
@@ -270,7 +288,7 @@ def main(todo):
         p.run()
         sys.exit(p.exit)
     except GremlinError as e:
-        print >>sys.stderr, str(e)
+        print(str(e), file=sys.stderr)
         sys.exit(1)
 
 if __name__ == '__main__':
