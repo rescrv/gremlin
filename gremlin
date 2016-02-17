@@ -175,7 +175,7 @@ class Playground(object):
         if len(cmd) == 1:
             self.environment[cmd[0]] = ''
         elif len(cmd) == 2:
-            self.environment[cmd[0]] = cmd[1]
+            self.environment[cmd[0]] = os.path.expandvars(cmd[1])
         else:
             raise GremlinError('invalid environment: %s' % sanitized_shell(cmd))
 
@@ -192,8 +192,11 @@ class Playground(object):
 
     def cmd_run(self, cmd):
         try:
+            env = dict(os.environ)
+            env.update(self.environment)
             cmd = tuple(map(os.path.expandvars, cmd))
-            p = subprocess.Popen(cmd, cwd=self.base,
+            p = subprocess.Popen(self.prefix_args() + cmd,
+                                 cwd=self.base, env=env,
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT)
             try:
@@ -256,7 +259,8 @@ class Playground(object):
         env.update(self.environment)
         stdout = open(self.daemon_logfile(len(self.daemons)), 'w')
         try:
-            proc = subprocess.Popen(cmd, stdout=stdout, stderr=subprocess.STDOUT,
+            proc = subprocess.Popen(self.prefix_args() + cmd,
+                                    stdout=stdout, stderr=subprocess.STDOUT,
                                     env=env, cwd=self.base)
         except OSError as e:
             if e.errno == errno.ENOENT:
@@ -281,6 +285,13 @@ class Playground(object):
             raise GremlinError('unknown signal: %r' % cmd[0])
         daemon = self.daemons[daemon]
         daemon.send_signal(sig)
+
+    def prefix_args(self):
+        env = dict(os.environ)
+        env.update(self.environment)
+        if 'GREMLIN_PREFIX' not in env:
+            return ()
+        return tuple(shlex.split(env['GREMLIN_PREFIX'], posix=True))
 
 def main(todo):
     try:
