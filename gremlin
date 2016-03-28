@@ -388,12 +388,14 @@ class Playground(object):
         for proc in self.daemons:
             if proc.poll() is not None and proc.returncode != 0:
                 dump_logs = True
-        while count < 16 and not self.daemons_all_dead():
+        start = time.time()
+        timeout = self.timeout if self.timeout else 10
+        while not self.daemons_all_dead():
             for proc in reversed(self.daemons):
                 if proc.returncode is None and proc.poll() is None:
                     pid = proc.pid
                     assert pid > 0
-                    if count >= 15:
+                    if time.time() - start > timeout:
                         os.kill(pid, signal.SIGKILL)
                     else:
                         os.kill(pid, signal.SIGTERM)
