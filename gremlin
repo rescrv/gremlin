@@ -559,6 +559,12 @@ class Playground(object):
         daemon = self.daemons[daemon]
         daemon.send_signal(sig)
 
+    def cmd_pause(self, cmd):
+        if len(cmd) != 0:
+            raise GremlinError('invalid pause command: no arguments')
+        print('waiting for user; press enter to continue')
+        input()
+
     def prefix_args(self):
         env = dict(os.environ)
         env.update(self.environment)
