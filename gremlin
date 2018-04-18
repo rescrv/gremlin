@@ -356,6 +356,7 @@ class Playground(object):
     def __init__(self, path):
         self.parser = Parser(path)
         self.environment = {}
+        tmpdir = os.environ.get('GREMLIN_TMPDIR')
         self.base = tempfile.mkdtemp(prefix='gremlin-')
         self.crash_is_nop = False
         self.daemons = []
